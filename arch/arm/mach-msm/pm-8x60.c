@@ -894,8 +894,8 @@ enum msm_pm_sleep_mode msm_pm_idle_enter(struct cpuidle_device *dev,
 		if (collapsed)
 			exit_stat = MSM_PM_STAT_IDLE_STANDALONE_POWER_COLLAPSE;
 		else
-			exit_stat =
-			     MSM_PM_STAT_IDLE_FAILED_STANDALONE_POWER_COLLAPSE;
+			exit_stat
+			    = MSM_PM_STAT_IDLE_FAILED_STANDALONE_POWER_COLLAPSE;
 		break;
 
 	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
@@ -905,7 +905,11 @@ enum msm_pm_sleep_mode msm_pm_idle_enter(struct cpuidle_device *dev,
 		collapsed = msm_pm_power_collapse(true);
 		timer_halted = true;
 
-		exit_stat = MSM_PM_STAT_IDLE_POWER_COLLAPSE;
+		if (collapsed)
+			exit_stat = MSM_PM_STAT_IDLE_POWER_COLLAPSE;
+		else
+			exit_stat = MSM_PM_STAT_IDLE_FAILED_POWER_COLLAPSE;
+
 		msm_pm_timer_exit_idle(timer_halted);
 		break;
 
@@ -1058,8 +1062,8 @@ static int msm_pm_enter(suspend_state_t state)
 		void *rs_limits = NULL;
 		int ret = -ENODEV;
 		uint32_t power;
-		int collapsed = 0;
 		uint32_t msm_pm_max_sleep_time = 0;
+		int collapsed = 0;
 
 		if (MSM_PM_DEBUG_SUSPEND & msm_pm_debug_mask)
 			pr_info("%s: power collapse\n", __func__);
