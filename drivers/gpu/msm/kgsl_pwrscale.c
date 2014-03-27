@@ -311,9 +311,9 @@ static void _kgsl_pwrscale_detach_policy(struct kgsl_device *device)
 
 void kgsl_pwrscale_detach_policy(struct kgsl_device *device)
 {
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 	_kgsl_pwrscale_detach_policy(device);
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 }
 EXPORT_SYMBOL(kgsl_pwrscale_detach_policy);
 
@@ -322,7 +322,7 @@ int kgsl_pwrscale_attach_policy(struct kgsl_device *device,
 {
 	int ret = 0;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	if (device->pwrscale.policy == policy)
 		goto done;
@@ -349,7 +349,7 @@ int kgsl_pwrscale_attach_policy(struct kgsl_device *device,
 	}
 
 done:
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	return ret;
 }

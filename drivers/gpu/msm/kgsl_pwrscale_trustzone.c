@@ -99,7 +99,7 @@ static ssize_t tz_governor_store(struct kgsl_device *device,
 	if (ret != 1)
 		return -EINVAL;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	if (!strncmp(str, "ondemand", 8))
 		priv->governor = TZ_GOVERNOR_ONDEMAND;
@@ -113,7 +113,7 @@ static ssize_t tz_governor_store(struct kgsl_device *device,
 		pwr->default_pwrlevel = pwr->init_pwrlevel;
 	}
 
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 	return count;
 }
 

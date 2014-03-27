@@ -69,7 +69,7 @@ static void idlestats_get_sample(struct msm_idle_stats_device *idledev,
 	struct kgsl_device *device = priv->device;
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 	/* If the GPU is asleep, don't wake it up - assume that we
 	   are idle */
 
@@ -82,7 +82,7 @@ static void idlestats_get_sample(struct msm_idle_stats_device *idledev,
 		pulse->busy_interval = 0;
 	}
 	pulse->wait_interval = 0;
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 }
 
 static void idlestats_busy(struct kgsl_device *device,

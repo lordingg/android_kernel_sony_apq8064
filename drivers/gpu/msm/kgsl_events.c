@@ -378,7 +378,7 @@ void kgsl_process_events(struct work_struct *work)
 	struct kgsl_context *context, *tmp;
 	uint32_t timestamp;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 
 	timestamp = kgsl_readtimestamp(device, NULL, KGSL_TIMESTAMP_RETIRED);
 	_retire_events(device, &device->events, timestamp);
@@ -404,6 +404,6 @@ void kgsl_process_events(struct work_struct *work)
 		}
 	}
 
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 }
 EXPORT_SYMBOL(kgsl_process_events);
