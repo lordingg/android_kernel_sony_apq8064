@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, 2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Sony Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -2379,7 +2379,7 @@ u32 ddl_set_default_decoder_buffer_req(struct ddl_decoder_data *decoder,
 	}
 	input_buf_req->align = DDL_LINEAR_BUFFER_ALIGN_BYTES;
 	decoder->min_input_buf_req = *input_buf_req;
-	if (frame_height_actual) {
+	if (frame_height_actual && frame_size->height > MDP_MIN_TILE_HEIGHT) {
 		frame_size->height = frame_height_actual;
 		ddl_calculate_stride(frame_size, !decoder->progressive_only);
 	}
