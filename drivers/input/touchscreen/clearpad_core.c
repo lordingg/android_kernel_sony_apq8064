@@ -1342,13 +1342,14 @@ static int synaptics_clearpad_set_power(struct synaptics_clearpad *this)
 
 		dev_info(&this->pdev->dev, "power OFF\n");
 
-		if (this->easy_wakeup_config.gesture_enable) {
+		if (this->easy_wakeup_config.gesture_engage) {
 			rc = synaptics_put_bit(this, SYNF(F11_2D, CTRL, 0x00),
 				XY_REPORTING_MODE_WAKEUP_GESTURE_MODE,
 				XY_REPORTING_MODE);
 			if (rc)
 				goto err_unlock;
 
+			this->easy_wakeup_config.gesture_enable = true;
 			this->ew_timeout = jiffies - 1;
 			usleep_range(10000, 11000);
 			LOG_CHECK(this, "enter doze mode\n");
@@ -1366,6 +1367,7 @@ static int synaptics_clearpad_set_power(struct synaptics_clearpad *this)
 					"failed to enter sleep mode\n");
 				goto err_unlock;
 			}
+			this->easy_wakeup_config.gesture_enable = false;
 			usleep_range(10000, 11000);
 			LOG_CHECK(this, "enter sleep mode\n");
 			synaptics_clearpad_set_irq(this,
@@ -2465,10 +2467,10 @@ static ssize_t synaptics_clearpad_wakeup_gesture_store(struct device *dev,
 	LOCK(this);
 
 	if (sysfs_streq(buf, "1")) {
-		this->easy_wakeup_config.gesture_enable = true;
+		this->easy_wakeup_config.gesture_engage = true;
 		device_init_wakeup(&this->pdev->dev, 1);
 	} else if (sysfs_streq(buf, "0")) {
-		this->easy_wakeup_config.gesture_enable = false;
+		this->easy_wakeup_config.gesture_engage = false;
 		device_init_wakeup(&this->pdev->dev, 0);
 	} else {
 		dev_err(&this->pdev->dev,

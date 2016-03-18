@@ -64,6 +64,7 @@ struct synaptics_button_data {
 
 struct synaptics_easy_wakeup_config {
 	bool gesture_enable;
+	bool gesture_engage;
 	bool large_panel;
 	unsigned long timeout_delay;
 };
