@@ -1312,9 +1312,6 @@ int ring_buffer_resize(struct ring_buffer *buffer, unsigned long size)
 
 	size = nr_pages * BUF_PAGE_SIZE;
 
-	if (size == buffer_size)
-		return size;
-
 	atomic_inc(&buffer->record_disabled);
 
 	/* Make sure all writers are done with this buffer. */
