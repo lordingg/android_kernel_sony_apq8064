@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,7 +34,6 @@ struct cpu_sync {
 	int cpu;
 	spinlock_t lock;
 	bool pending;
-	atomic_t being_woken;
 	int src_cpu;
 	unsigned int boost_min;
 	unsigned int input_boost_min;
@@ -71,7 +70,8 @@ static u64 last_input_time;
  * again each time the CPU comes back up. We can use CPUFREQ_START to figure
  * out a CPU is coming online instead of registering for hotplug notifiers.
  */
-static int boost_adjust_notify(struct notifier_block *nb, unsigned long val, void *data)
+static int boost_adjust_notify(struct notifier_block *nb, unsigned long val,
+				void *data)
 {
 	struct cpufreq_policy *policy = data;
 	unsigned int cpu = policy->cpu;
@@ -141,8 +141,7 @@ static int boost_mig_sync_thread(void *data)
 	unsigned long flags;
 
 	while (1) {
-		wait_event_interruptible(s->sync_wq, s->pending ||
-					kthread_should_stop());
+		wait_event(s->sync_wq, s->pending || kthread_should_stop());
 
 		if (kthread_should_stop())
 			break;
@@ -167,14 +166,11 @@ static int boost_mig_sync_thread(void *data)
 		}
 
 		cancel_delayed_work_sync(&s->boost_rem);
-		if (sync_threshold) {
-			if (src_policy.cur >= sync_threshold)
-				s->boost_min = sync_threshold;
-			else
-				s->boost_min = src_policy.cur;
-		} else {
+		if (sync_threshold)
+			s->boost_min = min(sync_threshold, src_policy.cur);
+		else
 			s->boost_min = src_policy.cur;
-		}
+
 		/* Force policy re-evaluation to trigger adjust notifier. */
 		get_online_cpus();
 		if (cpu_online(dest_cpu)) {
@@ -208,16 +204,7 @@ static int boost_migration_notify(struct notifier_block *nb,
 	s->pending = true;
 	s->src_cpu = (int) arg;
 	spin_unlock_irqrestore(&s->lock, flags);
-	/*
-	* Avoid issuing recursive wakeup call, as sync thread itself could be
-	* seen as migrating triggering this notification. Note that sync thread
-	* of a cpu could be running for a short while with its affinity broken
-	* because of CPU hotplug.
-	*/
-	if (!atomic_cmpxchg(&s->being_woken, 0, 1)) {
-		wake_up(&s->sync_wq);
-		atomic_set(&s->being_woken, 0);
-	}
+	wake_up(&s->sync_wq);
 
 	return NOTIFY_OK;
 }
@@ -357,7 +344,6 @@ static int cpu_boost_init(void)
 		s = &per_cpu(sync_info, cpu);
 		s->cpu = cpu;
 		init_waitqueue_head(&s->sync_wq);
-		atomic_set(&s->being_woken, 0);
 		spin_lock_init(&s->lock);
 		INIT_DELAYED_WORK(&s->boost_rem, do_boost_rem);
 		INIT_DELAYED_WORK(&s->input_boost_rem, do_input_boost_rem);
