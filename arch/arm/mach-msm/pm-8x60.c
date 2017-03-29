@@ -71,7 +71,7 @@
 #define NUM_OF_COUNTERS 3
 #define MAX_BUF_SIZE  512
 
-static int msm_pm_debug_mask = 1;
+static int msm_pm_debug_mask __refdata = 1;
 module_param_named(
 	debug_mask, msm_pm_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
 );
@@ -125,7 +125,7 @@ static char *msm_pm_sleep_mode_labels[MSM_PM_SLEEP_MODE_NR] = {
 
 static struct hrtimer pm_hrtimer;
 static struct msm_pm_sleep_ops pm_sleep_ops;
-static bool msm_pm_ldo_retention_enabled = true;
+static bool msm_pm_ldo_retention_enabled __refdata = true;
 static struct msm_pm_sleep_status_data *msm_pm_slp_sts;
 static bool msm_pm_use_sync_timer;
 static struct msm_pm_cp15_save_data cp15_data;
@@ -249,7 +249,7 @@ static ssize_t msm_pm_mode_attr_store(struct kobject *kobj,
 	return ret ? ret : count;
 }
 
-static int __devinit msm_pm_mode_sysfs_add_cpu(
+static int msm_pm_mode_sysfs_add_cpu(
 	unsigned int cpu, struct kobject *modes_kobj)
 {
 	char cpu_name[8];
@@ -332,7 +332,7 @@ mode_sysfs_add_cpu_exit:
 	return ret;
 }
 
-int __devinit msm_pm_mode_sysfs_add(void)
+int msm_pm_mode_sysfs_add(void)
 {
 	struct kobject *module_kobj;
 	struct kobject *modes_kobj;
@@ -1149,7 +1149,7 @@ static const struct platform_suspend_ops msm_pm_ops = {
 	.valid = suspend_valid_only_mem,
 };
 
-static int __devinit msm_pm_snoc_client_probe(struct platform_device *pdev)
+static int msm_pm_snoc_client_probe(struct platform_device *pdev)
 {
 	int rc = 0;
 	static struct msm_bus_scale_pdata *msm_pm_bus_pdata;
@@ -1178,7 +1178,7 @@ snoc_cl_probe_done:
 	return rc;
 }
 
-static int __devinit msm_cpu_status_probe(struct platform_device *pdev)
+static int msm_cpu_status_probe(struct platform_device *pdev)
 {
 	struct msm_pm_sleep_status_data *pdata;
 	char *key;
@@ -1252,7 +1252,7 @@ fail_free_mem:
 
 };
 
-static struct of_device_id msm_slp_sts_match_tbl[] = {
+static struct of_device_id msm_slp_sts_match_tbl[] __initdata = {
 	{.compatible = "qcom,cpu-sleep-status"},
 	{},
 };
@@ -1266,7 +1266,7 @@ static struct platform_driver msm_cpu_status_driver = {
 	},
 };
 
-static struct of_device_id msm_snoc_clnt_match_tbl[] = {
+static struct of_device_id msm_snoc_clnt_match_tbl[] __initdata = {
 	{.compatible = "qcom,pm-snoc-client"},
 	{},
 };
@@ -1281,7 +1281,7 @@ static struct platform_driver msm_cpu_pm_snoc_client_driver = {
 };
 
 
-static int __init msm_pm_setup_saved_state(void)
+static int msm_pm_setup_saved_state(void)
 {
 	pgd_t *pc_pgd;
 	pmd_t *pmd;
@@ -1397,7 +1397,7 @@ static int __init msm_pm_init(void)
 
 late_initcall(msm_pm_init);
 
-static void __devinit msm_pm_set_flush_fn(uint32_t pc_mode)
+static void msm_pm_set_flush_fn(uint32_t pc_mode)
 {
 	msm_pm_disable_l2_fn = NULL;
 	msm_pm_enable_l2_fn = NULL;
@@ -1611,7 +1611,7 @@ pm_8x60_probe_done:
 	return ret;
 }
 
-static struct of_device_id msm_pm_8x60_table[] = {
+static struct of_device_id msm_pm_8x60_table[] __initdata = {
 		{.compatible = "qcom,pm-8x60"},
 		{},
 };
