@@ -332,16 +332,17 @@ static struct dentry *__sdcardfs_lookup(struct dentry *dentry,
 	this.len = strlen(name);
 	this.hash = full_name_hash(this.name, this.len);
 	lower_dentry = d_lookup(lower_dir_dentry, &this);
+	if (lower_dentry)
+		goto setup_lower;
 
+	lower_dentry = d_alloc(lower_dir_dentry, &this);
 	if (!lower_dentry) {
-		/* We called vfs_path_lookup earlier, and did not get a negative
-		 * dentry then. Don't confuse the lower filesystem by forcing one
-		 * on it now...
-		 */
-		err = -ENOENT;
+		err = -ENOMEM;
 		goto out;
 	}
+	d_add(lower_dentry, NULL); /* instantiate and hash */
 
+setup_lower:
 	lower_nd.path.dentry = lower_dentry;
 	lower_nd.path.mnt = mntget(lower_dir_mnt);
 	sdcardfs_set_lower_path(dentry, &lower_nd.path);
