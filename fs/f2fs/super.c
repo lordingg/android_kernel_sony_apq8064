@@ -89,6 +89,7 @@ enum {
 	Opt_active_logs,
 	Opt_disable_ext_identify,
 	Opt_inline_xattr,
+	Opt_noinline_xattr,
 	Opt_inline_data,
 	Opt_inline_dentry,
 	Opt_noinline_dentry,
@@ -101,6 +102,7 @@ enum {
 	Opt_noinline_data,
 	Opt_data_flush,
 	Opt_mode,
+	Opt_io_size_bits,
 	Opt_fault_injection,
 	Opt_err,
 };
@@ -119,6 +121,7 @@ static match_table_t f2fs_tokens = {
 	{Opt_active_logs, "active_logs=%u"},
 	{Opt_disable_ext_identify, "disable_ext_identify"},
 	{Opt_inline_xattr, "inline_xattr"},
+	{Opt_noinline_xattr, "noinline_xattr"},
 	{Opt_inline_data, "inline_data"},
 	{Opt_inline_dentry, "inline_dentry"},
 	{Opt_noinline_dentry, "noinline_dentry"},
@@ -131,6 +134,7 @@ static match_table_t f2fs_tokens = {
 	{Opt_noinline_data, "noinline_data"},
 	{Opt_data_flush, "data_flush"},
 	{Opt_mode, "mode=%s"},
+	{Opt_io_size_bits, "io_bits=%u"},
 	{Opt_fault_injection, "fault_injection=%u"},
 	{Opt_err, NULL},
 };
@@ -435,6 +439,9 @@ static int parse_options(struct super_block *sb, char *options)
 		case Opt_inline_xattr:
 			set_opt(sbi, INLINE_XATTR);
 			break;
+		case Opt_noinline_xattr:
+			clear_opt(sbi, INLINE_XATTR);
+			break;
 #else
 		case Opt_user_xattr:
 			f2fs_msg(sb, KERN_INFO,
@@ -447,6 +454,10 @@ static int parse_options(struct super_block *sb, char *options)
 		case Opt_inline_xattr:
 			f2fs_msg(sb, KERN_INFO,
 				"inline_xattr options not supported");
+			break;
+		case Opt_noinline_xattr:
+			f2fs_msg(sb, KERN_INFO,
+				"noinline_xattr options not supported");
 			break;
 #endif
 #ifdef CONFIG_F2FS_FS_POSIX_ACL
@@ -531,11 +542,23 @@ static int parse_options(struct super_block *sb, char *options)
 			}
 			kfree(name);
 			break;
+		case Opt_io_size_bits:
+			if (args->from && match_int(args, &arg))
+				return -EINVAL;
+			if (arg > __ilog2_u32(BIO_MAX_PAGES)) {
+				f2fs_msg(sb, KERN_WARNING,
+					"Not support %d, larger than %d",
+					1 << arg, BIO_MAX_PAGES);
+				return -EINVAL;
+			}
+			sbi->write_io_size_bits = arg;
+			break;
 		case Opt_fault_injection:
 			if (args->from && match_int(args, &arg))
 				return -EINVAL;
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 			f2fs_build_fault_attr(sbi, arg);
+			set_opt(sbi, FAULT_INJECTION);
 #else
 			f2fs_msg(sb, KERN_INFO,
 				"FAULT_INJECTION was not selected");
@@ -547,6 +570,13 @@ static int parse_options(struct super_block *sb, char *options)
 				p);
 			return -EINVAL;
 		}
+	}
+
+	if (F2FS_IO_SIZE_BITS(sbi) && !test_opt(sbi, LFS)) {
+		f2fs_msg(sb, KERN_ERR,
+				"Should set mode=lfs with %uKB-sized IO",
+				F2FS_IO_SIZE_KB(sbi));
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -561,13 +591,9 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 	init_once((void *) fi);
 
-	if (percpu_counter_init(&fi->dirty_pages, 0)) {
-		kmem_cache_free(f2fs_inode_cachep, fi);
-		return NULL;
-	}
-
 	/* Initialize f2fs-specific inode info */
 	fi->vfs_inode.i_version = 1;
+	atomic_set(&fi->dirty_pages, 0);
 	fi->i_current_depth = 1;
 	fi->i_advise = 0;
 	init_rwsem(&fi->i_sem);
@@ -585,6 +611,7 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 static int f2fs_drop_inode(struct inode *inode)
 {
+	int ret;
 	/*
 	 * This is to avoid a deadlock condition like below.
 	 * writeback_single_inode(inode)
@@ -614,10 +641,12 @@ static int f2fs_drop_inode(struct inode *inode)
 			spin_lock(&inode->i_lock);
 			atomic_dec(&inode->i_count);
 		}
+		trace_f2fs_drop_inode(inode, 0);
 		return 0;
 	}
-
-	return generic_drop_inode(inode);
+	ret = generic_drop_inode(inode);
+	trace_f2fs_drop_inode(inode, ret);
+	return ret;
 }
 
 int f2fs_inode_dirtied(struct inode *inode, bool sync)
@@ -687,7 +716,6 @@ static void f2fs_i_callback(struct rcu_head *head)
 
 static void f2fs_destroy_inode(struct inode *inode)
 {
-	percpu_counter_destroy(&F2FS_I(inode)->dirty_pages);
 	call_rcu(&inode->i_rcu, f2fs_i_callback);
 }
 
@@ -755,6 +783,8 @@ static void f2fs_put_super(struct super_block *sb)
 	sb->s_fs_info = NULL;
 	kfree(sbi->raw_super);
 
+	if (sbi->write_io_dummy)
+		mempool_destroy(sbi->write_io_dummy);
 	destroy_percpu_info(sbi);
 	kfree(sbi);
 }
@@ -854,6 +884,8 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 		seq_puts(seq, ",nouser_xattr");
 	if (test_opt(sbi, INLINE_XATTR))
 		seq_puts(seq, ",inline_xattr");
+	else
+		seq_puts(seq, ",noinline_xattr");
 #endif
 #ifdef CONFIG_F2FS_FS_POSIX_ACL
 	if (test_opt(sbi, POSIX_ACL))
@@ -890,6 +922,12 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 	else if (test_opt(sbi, LFS))
 		seq_puts(seq, "lfs");
 	seq_printf(seq, ",active_logs=%u", sbi->active_logs);
+	if (F2FS_IO_SIZE_BITS(sbi))
+		seq_printf(seq, ",io_size=%uKB", F2FS_IO_SIZE_KB(sbi));
+#ifdef CONFIG_F2FS_FAULT_INJECTION
+	if (test_opt(sbi, FAULT_INJECTION))
+		seq_puts(seq, ",fault_injection");
+#endif
 
 	return 0;
 }
@@ -968,6 +1006,7 @@ static void default_options(struct f2fs_sb_info *sbi)
 	sbi->active_logs = NR_CURSEG_TYPE;
 
 	set_opt(sbi, BG_GC);
+	set_opt(sbi, INLINE_XATTR);
 	set_opt(sbi, INLINE_DATA);
 	set_opt(sbi, INLINE_DENTRY);
 	set_opt(sbi, EXTENT_CACHE);
@@ -1148,7 +1187,7 @@ static unsigned f2fs_max_namelen(struct inode *inode)
 			inode->i_sb->s_blocksize : F2FS_NAME_LEN;
 }
 
-static struct fscrypt_operations f2fs_cryptops = {
+static const struct fscrypt_operations f2fs_cryptops = {
 	.get_context	= f2fs_get_context,
 	.key_prefix	= f2fs_key_prefix,
 	.set_context	= f2fs_set_context,
@@ -1157,7 +1196,7 @@ static struct fscrypt_operations f2fs_cryptops = {
 	.max_namelen	= f2fs_max_namelen,
 };
 #else
-static struct fscrypt_operations f2fs_cryptops = {
+static const struct fscrypt_operations f2fs_cryptops = {
 	.is_encrypted	= f2fs_encrypted_inode,
 };
 #endif
@@ -1773,12 +1812,19 @@ try_onemore:
 	if (err)
 		goto free_options;
 
+	if (F2FS_IO_SIZE(sbi) > 1) {
+		sbi->write_io_dummy =
+			mempool_create_page_pool(2 * (F2FS_IO_SIZE(sbi) - 1), 0);
+		if (!sbi->write_io_dummy)
+			goto free_options;
+	}
+
 	/* get an inode for meta space */
 	sbi->meta_inode = f2fs_iget(sb, F2FS_META_INO(sbi));
 	if (IS_ERR(sbi->meta_inode)) {
 		f2fs_msg(sb, KERN_ERR, "Failed to read F2FS meta data inode");
 		err = PTR_ERR(sbi->meta_inode);
-		goto free_options;
+		goto free_io_dummy;
 	}
 
 	err = get_valid_checkpoint(sbi);
@@ -1955,6 +2001,8 @@ skip_recovery:
 			sbi->valid_super_block ? 1 : 2, err);
 	}
 
+	f2fs_msg(sbi->sb, KERN_NOTICE, "Mounted with checkpoint version = %llx",
+				cur_cp_version(F2FS_CKPT(sbi)));
 	f2fs_update_time(sbi, CP_TIME);
 	f2fs_update_time(sbi, REQ_TIME);
 	return 0;
@@ -2000,6 +2048,9 @@ free_blkz:
 free_meta_inode:
 	make_bad_inode(sbi->meta_inode);
 	iput(sbi->meta_inode);
+free_io_dummy:
+	if (sbi->write_io_dummy)
+		mempool_destroy(sbi->write_io_dummy);
 free_options:
 	destroy_percpu_info(sbi);
 	kfree(options);

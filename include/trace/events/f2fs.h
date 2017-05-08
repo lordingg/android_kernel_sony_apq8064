@@ -24,7 +24,8 @@
 #define F2FS_BIO_MASK(t)	(t & (READA | WRITE_FLUSH_FUA))
 #define F2FS_BIO_EXTRA_MASK(t)	(t & (REQ_META | REQ_PRIO))
 
-#define show_bio_type(type)	show_bio_base(type), show_bio_extra(type)
+#define show_bio_type(op, op_flags)					\
+		show_bio_base((op|op_flags)), show_bio_extra((op|op_flags))
 
 #define show_bio_base(type)						\
 	__print_symbolic(F2FS_BIO_MASK(type),				\
@@ -267,6 +268,13 @@ TRACE_EVENT(f2fs_unlink_enter,
 );
 
 DEFINE_EVENT(f2fs__inode_exit, f2fs_unlink_exit,
+
+	TP_PROTO(struct inode *inode, int ret),
+
+	TP_ARGS(inode, ret)
+);
+
+DEFINE_EVENT(f2fs__inode_exit, f2fs_drop_inode,
 
 	TP_PROTO(struct inode *inode, int ret),
 
@@ -699,7 +707,8 @@ DECLARE_EVENT_CLASS(f2fs__submit_page_bio,
 		__field(pgoff_t, index)
 		__field(block_t, old_blkaddr)
 		__field(block_t, new_blkaddr)
-		__field(int, rw)
+		__field(int, op)
+		__field(int, op_flags)
 		__field(int, type)
 	),
 
@@ -709,7 +718,8 @@ DECLARE_EVENT_CLASS(f2fs__submit_page_bio,
 		__entry->index		= page->index;
 		__entry->old_blkaddr	= fio->old_blkaddr;
 		__entry->new_blkaddr	= fio->new_blkaddr;
-		__entry->rw		= fio->rw;
+		__entry->op		= fio->op;
+		__entry->op_flags	= fio->op_flags;
 		__entry->type		= fio->type;
 	),
 
@@ -719,7 +729,7 @@ DECLARE_EVENT_CLASS(f2fs__submit_page_bio,
 		(unsigned long)__entry->index,
 		(unsigned long long)__entry->old_blkaddr,
 		(unsigned long long)__entry->new_blkaddr,
-		show_bio_type(__entry->rw),
+		show_bio_type(__entry->op, __entry->op_flags),
 		show_block_type(__entry->type))
 );
 
@@ -741,16 +751,16 @@ DEFINE_EVENT_CONDITION(f2fs__submit_page_bio, f2fs_submit_page_mbio,
 	TP_CONDITION(page->mapping)
 );
 
-DECLARE_EVENT_CLASS(f2fs__submit_bio,
+DECLARE_EVENT_CLASS(f2fs__bio,
 
-	TP_PROTO(struct super_block *sb, struct f2fs_io_info *fio,
-						struct bio *bio),
+	TP_PROTO(struct super_block *sb, int type, struct bio *bio),
 
-	TP_ARGS(sb, fio, bio),
+	TP_ARGS(sb, type, bio),
 
 	TP_STRUCT__entry(
 		__field(dev_t,	dev)
-		__field(int,	rw)
+		__field(int,	op)
+		__field(int,	op_flags)
 		__field(int,	type)
 		__field(sector_t,	sector)
 		__field(unsigned int,	size)
@@ -758,36 +768,53 @@ DECLARE_EVENT_CLASS(f2fs__submit_bio,
 
 	TP_fast_assign(
 		__entry->dev		= sb->s_dev;
-		__entry->rw		= fio->rw;
-		__entry->type		= fio->type;
+		__entry->op		= bio_op(bio);
+		__entry->op_flags	= bio->bi_rw;
+		__entry->type		= type;
 		__entry->sector		= bio->bi_sector;
 		__entry->size		= bio->bi_size;
 	),
 
 	TP_printk("dev = (%d,%d), %s%s, %s, sector = %lld, size = %u",
 		show_dev(__entry),
-		show_bio_type(__entry->rw),
+		show_bio_type(__entry->op, __entry->op_flags),
 		show_block_type(__entry->type),
 		(unsigned long long)__entry->sector,
 		__entry->size)
 );
 
-DEFINE_EVENT_CONDITION(f2fs__submit_bio, f2fs_submit_write_bio,
+DEFINE_EVENT_CONDITION(f2fs__bio, f2fs_prepare_write_bio,
 
-	TP_PROTO(struct super_block *sb, struct f2fs_io_info *fio,
-							struct bio *bio),
+	TP_PROTO(struct super_block *sb, int type, struct bio *bio),
 
-	TP_ARGS(sb, fio, bio),
+	TP_ARGS(sb, type, bio),
 
 	TP_CONDITION(bio)
 );
 
-DEFINE_EVENT_CONDITION(f2fs__submit_bio, f2fs_submit_read_bio,
+DEFINE_EVENT_CONDITION(f2fs__bio, f2fs_prepare_read_bio,
 
-	TP_PROTO(struct super_block *sb, struct f2fs_io_info *fio,
-							struct bio *bio),
+	TP_PROTO(struct super_block *sb, int type, struct bio *bio),
 
-	TP_ARGS(sb, fio, bio),
+	TP_ARGS(sb, type, bio),
+
+	TP_CONDITION(bio)
+);
+
+DEFINE_EVENT_CONDITION(f2fs__bio, f2fs_submit_read_bio,
+
+	TP_PROTO(struct super_block *sb, int type, struct bio *bio),
+
+	TP_ARGS(sb, type, bio),
+
+	TP_CONDITION(bio)
+);
+
+DEFINE_EVENT_CONDITION(f2fs__bio, f2fs_submit_write_bio,
+
+	TP_PROTO(struct super_block *sb, int type, struct bio *bio),
+
+	TP_ARGS(sb, type, bio),
 
 	TP_CONDITION(bio)
 );
