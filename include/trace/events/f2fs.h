@@ -17,6 +17,7 @@
 		{ META_FLUSH,	"META_FLUSH" },				\
 		{ INMEM,	"INMEM" },				\
 		{ INMEM_DROP,	"INMEM_DROP" },				\
+		{ INMEM_INVALIDATE,	"INMEM_INVALIDATE" },		\
 		{ INMEM_REVOKE,	"INMEM_REVOKE" },			\
 		{ IPU,		"IN-PLACE" },				\
 		{ OPU,		"OUT-OF-PLACE" })
@@ -81,7 +82,8 @@
 		{ CP_FASTBOOT,	"Fastboot" },				\
 		{ CP_SYNC,	"Sync" },				\
 		{ CP_RECOVERY,	"Recovery" },				\
-		{ CP_DISCARD,	"Discard" })
+		{ CP_DISCARD,	"Discard" },				\
+		{ CP_UMOUNT | CP_TRIMMED,	"Umount,Trimmed" })
 
 struct victim_sel_policy;
 struct f2fs_map_blocks;
